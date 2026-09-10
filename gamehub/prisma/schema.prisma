@@ -1,0 +1,346 @@
+// This is your Prisma schema file for GameHub
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// GAMEHUB DATA MODEL - Simplified Version
+// ============================================
+
+model Player {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  username        String    @unique
+  passwordHash    String
+  avatarUrl       String?
+  bio             String?
+  country         String?
+  isVerified      Boolean   @default(false)
+  rating          Int       @default(1000)
+  wins            Int       @default(0)
+  losses          Int       @default(0)
+  draws           Int       @default(0)
+  matchesPlayed   Int       @default(0)
+  tournamentsWon  Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  teams           TeamMember[]
+  participations  TournamentParticipant[]
+  createdTournaments Tournament[]
+  matchResults    MatchResult[]
+  notifications   Notification[]
+  messages        Message[]
+
+  @@index([rating])
+  @@index([username])
+  @@index([email])
+}
+
+model Team {
+  id          String    @id @default(uuid())
+  name        String
+  tag         String?
+  logoUrl     String?
+  game        GameType
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members     TeamMember[]
+  
+
+  @@index([game])
+  @@index([name])
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  playerId  String
+  teamId    String
+  role      TeamRole @default(MEMBER)
+  joinedAt  DateTime @default(now())
+
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, teamId])
+  @@index([teamId])
+}
+
+model Tournament {
+  id                  String        @id @default(uuid())
+  name                String
+  description         String?
+  game                GameType
+  format              TournamentFormat @default(SINGLE_ELIMINATION)
+  status              TournamentStatus @default(REGISTRATION_OPEN)
+  maxParticipants     Int
+  currentParticipants Int           @default(0)
+  entryFee            Int           @default(0)
+  prizePool           Int           @default(0)
+  prizeDistribution   Json?
+  rules               String?
+  bracketType         BracketType   @default(SINGLE_ELIMINATION)
+  startDate           DateTime
+  endDate             DateTime?
+  registrationDeadline DateTime?
+  isPublic            Boolean       @default(true)
+  isFeatured          Boolean       @default(false)
+  coverImageUrl       String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  creatorId           String
+
+  creator         Player                @relation(fields: [creatorId], references: [id])
+  participants    TournamentParticipant[]
+  matches         Match[]
+  rounds          Round[]
+  leaderboards    Leaderboard[]
+  messages        Message[]
+
+  @@index([game])
+  @@index([status])
+  @@index([startDate])
+  @@index([isFeatured])
+  @@index([creatorId])
+}
+
+model TournamentParticipant {
+  id            String    @id @default(uuid())
+  tournamentId  String
+  playerId      String?
+  seed          Int?
+  status        ParticipantStatus @default(REGISTERED)
+  checkedIn     Boolean   @default(false)
+  registeredAt  DateTime  @default(now())
+
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  player        Player?    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  matchParticipants MatchParticipant[]
+  leaderboard   Leaderboard?
+
+  @@unique([tournamentId, playerId])
+  @@index([tournamentId])
+  @@index([playerId])
+}
+
+model MatchParticipant {
+  id                String    @id @default(uuid())
+  matchId           String
+  participantId     String
+  position          Int       @default(0)
+  score             Int?
+  winner            Boolean?
+  disqualified      Boolean   @default(false)
+
+  match             Match                 @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  participant       TournamentParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, participantId])
+  @@index([matchId])
+  @@index([participantId])
+}
+
+model Round {
+  id            String    @id @default(uuid())
+  tournamentId  String
+  roundNumber   Int
+  name          String?
+  bestOf        Int       @default(1)
+  status        RoundStatus @default(PENDING)
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matches       Match[]
+
+  @@unique([tournamentId, roundNumber])
+  @@index([tournamentId])
+}
+
+model Match {
+  id            String    @id @default(uuid())
+  tournamentId  String
+  roundId       String?
+  matchNumber   Int
+  status        MatchStatus @default(SCHEDULED)
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  bestOf        Int       @default(1)
+  configuration Json?
+  winnerId      String?
+
+  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  round         Round?     @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  participants  MatchParticipant[]
+  results       MatchResult[]
+
+  @@index([tournamentId])
+  @@index([roundId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+model MatchResult {
+  id            String    @id @default(uuid())
+  matchId       String
+  playerId      String?
+  mapName       String?
+  score         Int
+  duration      Int?
+  statistics    Json?
+  recordedAt    DateTime  @default(now())
+
+  match         Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player        Player?   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+  @@index([playerId])
+}
+
+model Leaderboard {
+  id            String    @id @default(uuid())
+  tournamentId  String
+  participantId String    @unique
+  rank          Int
+  points        Int       @default(0)
+  wins          Int       @default(0)
+  losses        Int       @default(0)
+  draws         Int       @default(0)
+  matchesPlayed Int       @default(0)
+  kills         Int       @default(0)
+  deaths        Int       @default(0)
+  customStats   Json?
+
+  tournament    Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  participant   TournamentParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId])
+  @@index([rank])
+  @@index([points])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  playerId    String
+  type        NotificationType
+  title       String
+  message     String
+  data        Json?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  senderId    String?
+  tournamentId String?
+  content     String
+  messageType MessageType @default(TEXT)
+  createdAt   DateTime @default(now())
+  editedAt    DateTime?
+
+  sender      Player?   @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  tournament  Tournament? @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId])
+  @@index([createdAt])
+}
+
+enum GameType {
+  PUBG_MOBILE
+  COD_MOBILE
+  FREE_FIRE
+  FC_26
+  VALORANT
+  CS2
+  LEAGUE_OF_LEGENDS
+  ROCKET_LEAGUE
+  OTHER
+}
+
+enum TeamRole {
+  CAPTAIN
+  CO_CAPTAIN
+  MEMBER
+  SUBSTITUTE
+}
+
+enum TournamentFormat {
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+  ROUND_ROBIN
+  SWISS
+  GROUP_STAGE
+}
+
+enum TournamentStatus {
+  REGISTRATION_OPEN
+  REGISTRATION_CLOSED
+  CHECK_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  POSTPONED
+}
+
+enum BracketType {
+  SINGLE_ELIMINATION
+  DOUBLE_ELIMINATION
+  ROUND_ROBIN
+}
+
+enum ParticipantStatus {
+  REGISTERED
+  CHECKED_IN
+  ELIMINATED
+  DISQUALIFIED
+  WITHDREW
+}
+
+enum RoundStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  READY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  POSTPONED
+  AWAITING_RESULT
+}
+
+enum NotificationType {
+  TOURNAMENT_STARTING
+  MATCH_SCHEDULED
+  MATCH_RESULT
+  TEAM_INVITE
+  BRACKET_UPDATE
+  PRIZE_DISTRIBUTED
+  GENERAL
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  SYSTEM
+}
